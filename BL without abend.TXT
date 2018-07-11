@@ -1,0 +1,295 @@
+      *-----------------------------------------------------------------
+       IDENTIFICATION DIVISION.
+      *-----------------------------------------------------------------
+      * HOW TO DO A BALANCE LINE WRITING IN A DIFFERENT FILE NOT FOUNDED
+      * REGISTERS INSTEAD OF LAUNCH AN ABNORMAL END IN BATCH EXECUTION. 
+       PROGRAM-ID. SAMPLE01.
+       AUTHOR. JOSE-FINARDI.
+      *-----------------------------------------------------------------
+       ENVIRONMENT DIVISION.
+      *-----------------------------------------------------------------
+       CONFIGURATION SECTION.
+      * AT THIS SECTION THE ENVIRONMENT MUST BE CONFIGURATED PROPERLY
+      * AND DEPENDS ON YOUR MAINFRAME CONFIGURATION.
+      *-----------------------------------------------------------------
+       INPUT-OUTPUT SECTION.
+      *-----------------------------------------------------------------
+       FILE-CONTROL.
+           SELECT SAMFMSTR  ASSIGN TO AS-R-SAMFMSTR.
+           SELECT SAMFQERY  ASSIGN TO AS-R-SAMFQERY.
+           SELECT SAMFREST  ASSIGN TO UT-S-SAMFREST.
+           SELECT SAMFNTEX  ASSIGN TO UT-S-SAMFNTEX.
+      * WHERE
+      *  INPUT FILES - THESE FILES MUST HAVE A COMMON KEY AND BE ORDERED 
+      *                BY THESE KEYS PREVIOUSLY. THE DFSORT OR SORT CAN
+      *                BE USEFUL IN PREVIOUS STEPS AT JCL JOB. 
+      *  SAMFMSTR - IS THE MAIN FILE WHERE IS THE DATA TO BE WORKED
+      *  SAMFQERY - IS THE FILE THAT CONTAINS THE DATA TO RECOVER
+      *
+      *  OUTPUT FILES
+      *  SAMFREST - IS THE FILE WITH THE DATA RECOVERED TO BE USED 
+      *             FURTHER
+      *  SAMFNTEX - IS THE FILE THAT WILL KEEP THE NON-EXISTING 
+      *             REGISTERS 
+      * - THIS SECTION MAKE THE RELATION BETWEEN THE COBOL CODE AND
+      *             THE FILES IN JCL THAT STARTS THE COBOL PROGRAM
+      *
+      *-----------------------------------------------------------------
+       DATA DIVISION.
+      * IN COBOL, ALL THE VARIABLES ARE DECLARED IN THIS DIVISION
+      *-----------------------------------------------------------------
+       FILE SECTION. 
+      * THIS SECTION IS WHERE THE FILES ARE DEFINED
+      * TO THIS CASE, THE REGISTERS HAVE A FIXED LENGTH
+      * THE FILES LENGHT MUST BE CORRECTLY DEFINED OR WE HAVE A JCL ERROR  
+       FD SAMFMSTR
+           RECORDING MODE F
+           RECORD 160
+           BLOCK 0.
+      *
+       01 SAMFMSTR-REG-FD PIC X(160).
+      *
+       FD SAMFQERY
+           RECORDING MODE F
+           RECORD 16
+           BLOCK 0.
+      *
+       01 SAMFQERY-REG-FD PIC X(016).
+      *
+       FD SAMFREST
+           RECORDING MODE F
+           RECORD 164
+           BLOCK 0.
+      *
+       01 SAMFREST-REG-FD PIC X(164).
+      *
+       FD SAMFNTEX
+           RECORDING MODE F
+           RECORD 160
+           BLOCK 0.
+      *
+       01 SAMFNTEX-REG-FD PIC X(160).
+      *-----------------------------------------------------------------
+       WORKING-STORAGE SECTION.
+      *-----------------------------------------------------------------
+       01 SAMFMSTR-REGISTER.
+          03 SAMFMSTR-KEY                PIC S9(09) COMP.
+          03 SAMFMSTR-FILLER             PIC X(156).
+      * - THE IMPORTANT HERE IS THE KEY. THE OTHER DATA CAN BE LAUNCHED
+      * IN A STRING IN A FILLER AND MOVED TO THE OUTPUT FILE IF NO DATA
+      * CHECKS ARE REQUIRED
+      * - A PIC S9(09) COMP VARIABLE TAKE 4 BYTES, THAT'S WHY THE FILLER
+      * HAS 156 (160 MINUS 4)
+      *
+       01 SAMFQERY-REGISTER.
+          03 SAMFQERY-KEY                PIC S9(09) COMP.
+          03 SAMFQERY-DATA-TO-RECOVER    PIC S9(09) COMP.
+          03 FILLER                      PIC X(008).
+      *
+       01 SAMFREST-REGISTER.
+          03 SAMFREST-KEY                PIC S9(09) COMP.
+          03 SAMFREST-DATA-TO-RECOVER    PIC S9(09) COMP.
+          03 SAMFREST-FILLER             PIC X(156).
+      *                               
+       01 SAMFNTEX-REGISTER.
+          03 SAMFNTEX-KEY                PIC S9(09) COMP.
+          03 SAMFNTEX-FILLER             PIC X(156).
+      *
+       01 CONTROL-END-SAMFMSTR           PIC X(001) VALUE 'N'.
+          88 END-SAMFMSTR                           VALUE 'Y'.
+       01 CONTROL-END-SAMFQERY           PIC X(001) VALUE 'N'.
+          88 END-SAMFQERY                           VALUE 'Y'.
+      * THESE VARIABLES ACT LIKE A BOOLEAN AND CONTROL THE EOF OF THE	
+      * INPUT FILES
+       01  RET-CODE     PIC  9(03) VALUE 0.
+      * THIS VARIABLE KEEP THE RETURN CODE OF THE EXECUTION - ZERO IS OK
+      *-----------------------------------------------------------------
+       LOCAL-STORAGE SECTION.
+      *-----------------------------------------------------------------
+       01 WK-REGISTER.
+          03 WK-KEY                PIC S9(09) COMP.
+          03 WK-DATA-TO-RECOVER    PIC S9(09) COMP.
+          03 WK-FILLER             PIC X(156).
+      * COUNT HOW MUCH REGISTER WAS READ AT SAMFMSTR
+       01  CNT-READ-MSTR     PIC  9(08) VALUE ZEROS.
+      * COUNT HOW MUCH REGISTER WAS READ AT SAMFQERY
+       01  CNT-READ-QERY     PIC  9(08) VALUE ZEROS.
+      * COUNT HOW MUCH REGISTER WAS WRITEN AT SAMFREST
+       01  CNT-WRTN-REST     PIC  9(08) VALUE ZEROS.
+      * COUNT HOW MUCH REGISTER WAS WRITEN AT SAMFNTEX
+       01  CNT-WRTN-NTEX     PIC  9(08) VALUE ZEROS.
+      * ERROR MESSAGE TO BE SHOWN AT THE SYSOUT   
+       01  ERROR-MESSAGE     PIC  X(80).
+      * SECTION WHERE THE ERROR OCCURRED 
+       01  ERROR-SECTION     PIC  X(20).
+      * PREVIOUS KEY
+       01  PRV-KEY           PIC S9(09) COMP VALUE ZEROS.
+      *
+      *-----------------------------------------------------------------
+       PROCEDURE DIVISION.
+      *-----------------------------------------------------------------
+      *-----------------------------------------------------------------
+       000000-PRINCIPAL SECTION.
+      *-----------------------------------------------------------------
+           PERFORM 100-START-PROCESS
+           PERFORM 200-PROCESS UNTIL FIM-SAMFMSTR
+      *
+           PERFORM 300-FINALS
+           STOP RUN.
+      *
+      *-----------------------------------------------------------------
+       100-START-PROCESS                                       SECTION.
+      *-----------------------------------------------------------------
+      * OPEN THE FILES
+           OPEN INPUT  SAMFQERY
+                       SAMFMSTR
+                OUTPUT SAMFREST
+                       SAMFNTEX.
+      * READ THE FIRST REGISTER OF EACH INPUT FILES
+           PERFORM 700-READ-SAMFQERY
+           PERFORM 750-READ-SAMFMSTR.
+      *
+           EXIT.
+      *-----------------------------------------------------------------
+       200-PROCESS                                             SECTION.
+      *-----------------------------------------------------------------
+           PERFORM 210-CHECK-KEY
+      *
+           IF  SAMFMSTR-KEY EQUAL SAMFQERY-KEY
+               PERFORM 220-PREPARE-REGISTER
+               PERFORM 290-ASSEMBLE-REGISTER
+               PERFORM 750-READ-SAMFMSTR
+           ELSE
+               IF  SAMFMSTR-KEY GREATER SAMFQERY-KEY
+               AND NOT END-SAMFQERY
+                   PERFORM 700-READ-SAMFQERY
+               ELSE
+                   IF NOT END-SAMFMSTR
+                      PERFORM 230-ASSEMBLE-NON-EXISTENT
+                      PERFORM 750-READ-SAMFMSTR
+                   END-IF
+               END-IF
+           END-IF.
+      *
+           EXIT.
+      *-----------------------------------------------------------------
+       210-CHECK-KEY                                           SECTION.
+      *-----------------------------------------------------------------
+           IF SAMFMSTR-KEY EQUAL ZEROS
+               PERFORM 905-ERROR-005
+               MOVE 5 TO RET-CODE
+           END-IF.
+      *
+           EXIT.
+      *
+      *-----------------------------------------------------------------
+       220-PREPARE-REGISTER                                    SECTION.
+      *-----------------------------------------------------------------
+           MOVE SAMFMSTR-KEY             TO WK-KEY
+           MOVE SAMFQERY-DATA-TO-RECOVER TO WK-DATA-TO-RECOVER
+           MOVE SAMFMSTR-FILLER          TO WK-FILLER
+           .
+           EXIT.
+      *-----------------------------------------------------------------
+       230-ASSEMBLE-NON-EXISTENT                               SECTION.
+      *-----------------------------------------------------------------
+           MOVE SAMFMSTR-KEY             TO SAMFNTEX-KEY
+           MOVE SAMFMSTR-FILLER          TO SAMFNTEX-FILLER
+           PERFORM 850-WRITE-NON-EXISTENT
+           .
+           EXIT.
+      *-----------------------------------------------------------------
+       290-ASSEMBLE-REGISTER SECTION.
+      *-----------------------------------------------------------------
+      *
+           MOVE WK-KEY             TO SAMFREST-KEY
+           MOVE WK-DATA-TO-RECOVER TO SAMFREST-DATA-TO-RECOVER
+           MOVE WK-FILLER          TO SAMFREST-FILLER
+      *
+           PERFORM 800-WRITE-REST.
+      *
+       290000-SAI.
+           EXIT.
+      *-----------------------------------------------------------------
+       300-FINALS                                              SECTION.
+      *-----------------------------------------------------------------
+      * CLOSE THE FILES AND SHOW THE EXECUTION RESULTS
+           CLOSE  SAMFQERY
+                  SAMFMSTR
+                  SAMFREST
+                  SAMFNTEX.
+           MOVE  RET-CODE      TO  RETURN-CODE.
+           IF  RET-CODE  =  0
+               DISPLAY ' RC = 000 NORMAL END' UPON SYSOUT
+           END-IF.
+           DISPLAY ' READ FROM SAMFMSTR       : ' CNT-READ-MSTR.
+           DISPLAY ' READ FROM SAMFQERY       : ' CNT-READ-QERY. 
+           DISPLAY ' WRITTEN AT SAMFREST      : ' CNT-WRTN-REST.
+           DISPLAY ' WRITTEN AT SAMFNTEX      : ' CNT-WRTN-NTEX.
+      *
+           EXIT.
+      *-----------------------------------------------------------------
+       700-READ-SAMFQERY                                       SECTION.
+      *-----------------------------------------------------------------
+           READ SAMFQERY               INTO SAMFQERY-REGISTER
+               AT END
+                  MOVE  'Y'              TO  CONTROL-END-SAMFQERY
+               NOT AT END
+                  ADD   1                TO  CNT-READ-QERY
+           END-READ.
+
+           EXIT.
+      *
+      *-----------------------------------------------------------------
+       750-READ-SAMFMSTR                                       SECTION.
+      *-----------------------------------------------------------------
+           READ SAMFMSTR               INTO SAMFMSTR-REGISTER
+               AT END
+                  MOVE  'Y'              TO  CONTROL-END-SAMFMSTR
+               NOT AT END
+                  ADD   1                TO  CNT-READ-MSTR
+           END-READ.
+
+           EXIT.
+      *
+      *-----------------------------------------------------------------
+       800-WRITE-REST                                          SECTION.
+      *-----------------------------------------------------------------
+      *
+           ADD 1  TO CNT-WRTN-REST
+           WRITE  SAMFREST-REG-FD      FROM  SAMFREST-REGISTER.
+      *
+       800000-SAI.
+           EXIT.
+      *-----------------------------------------------------------------
+       850-WRITE-NON-EXISTENT                                  SECTION.
+      *-----------------------------------------------------------------
+      *
+           ADD 1  TO CNT-WRTN-NTEX
+           WRITE  SAMFNTEX-REG-FD      FROM  SAMFNTEX-REGISTER.
+      *
+       850000-SAI.
+           EXIT.
+      *-----------------------------------------------------------------
+       900000-ERRO SECTION.
+      *-----------------------------------------------------------------
+      *
+       999005-ERRO-005.
+           DISPLAY 'KEY IS INVALID '
+           DISPLAY 'ERROR 005 '
+           DISPLAY 'AT REGISTER: ' CNT-READ-MSTR
+           PERFORM 999-ABEND.
+      *
+      *-----------------------------------------------------------------
+       999-ABEND.
+      *-----------------------------------------------------------------
+           CLOSE  SAMFQERY
+                  SAMFMSTR
+                  SAMFREST
+                  SAMFNTEX.
+
+           MOVE RET-CODE TO  RETURN-CODE.
+           DISPLAY 'ABNORMAL END'.
+           STOP RUN.
+           EXIT.
+      *-----------------------------------------------------------------
